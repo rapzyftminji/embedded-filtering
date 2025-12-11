@@ -1,0 +1,10 @@
+../Core/Src/main.c:147:6:SystemClock_Config	112	static,ignoring_inline_asm
+../Core/Src/main.c:90:5:main	88	static,ignoring_inline_asm
+../Core/Src/main.c:380:6:HAL_TIM_PeriodElapsedCallback	8	static
+../Core/Src/main.c:435:6:HAL_UART_TxCpltCallback	0	static
+../Core/Src/main.c:441:6:HAL_UART_RxCpltCallback	8	static
+../Core/Src/main.c:470:6:Tiny_UIntToString	48	static
+../Core/Src/main.c:419:6:HAL_ADC_ConvCpltCallback	16	static
+../Core/Src/main.c:498:6:HAL_UART_ErrorCallback	8	static
+../Core/Src/main.c:515:6:HAL_ADC_ErrorCallback	8	static
+../Core/Src/main.c:527:6:Error_Handler	0	static,ignoring_inline_asm
