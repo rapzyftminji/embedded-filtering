@@ -1,10 +1,9 @@
 import serial
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+from matplotlib.widgets import Button
 import numpy as np
 from collections import deque
-import threading
-import time
 import sys
 
 # --- CONFIGURATION ---
@@ -19,34 +18,79 @@ try:
     print(f"Connected to {SERIAL_PORT} at {BAUD_RATE} baud.")
 except serial.SerialException:
     print(f"Error: Could not open serial port {SERIAL_PORT}.")
-    print("Check connection or permissions (sudo usermod -a -G dialout $USER).")
-    exit()
+    print("Check connection or permissions.")
+    sys.exit()
 
 # --- SETUP DATA ---
 data = deque([0] * MAX_POINTS, maxlen=MAX_POINTS)
 
 # --- SETUP PLOT ---
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
-plt.subplots_adjust(hspace=0.4)
-
-# Time Domain Plot
-ax1.set_title("Real-Time ADC Data (Type 's' to Start, 'p' to Stop)")
+plt.subplots_adjust(hspace=0.4, bottom=0.2) 
+ax1.set_title("Real-Time ADC Data")
 ax1.set_xlabel("Time (Samples)")
-ax1.set_ylabel("ADC Value (0-4095)")
+ax1.set_ylabel("ADC Value")
 ax1.set_ylim(0, 4200)
 line, = ax1.plot(range(MAX_POINTS), data)
 
-# Frequency Domain Plot
 ax2.set_title("Frequency Spectrum (FFT)")
 ax2.set_xlabel("Frequency (Hz)")
 ax2.set_ylabel("Magnitude")
 ax2.set_xlim(0, FS / 2)
-ax2.set_ylim(0, 1000) # Adjust based on signal magnitude
+ax2.set_ylim(0, 1000)
 line_fft, = ax2.plot([], [], color='r')
 
-# --- UPDATE FUNCTION (Restored) ---
+def send_cmd(byte_cmd):
+    if ser.is_open:
+        try:
+            ser.write(byte_cmd)
+            print(f">> Sent: {byte_cmd}")
+        except serial.SerialException:
+            pass
+
+def start_click(event): send_cmd(b's')
+def lpf_click(event):   send_cmd(b'a')
+def hpf_click(event):   send_cmd(b'b')
+def bpf_click(event):   send_cmd(b'c')
+def bsf_click(event):   send_cmd(b'd') 
+def pause_click(event): send_cmd(b'p')
+
+btn_width = 0.12
+btn_height = 0.075
+spacing = 0.02
+start_x = 0.08
+
+# 1. START
+ax_start = plt.axes([start_x, 0.05, btn_width, btn_height])
+btn_start = Button(ax_start, 'Start', color='#d9ead3', hovercolor='#b6d7a8')
+btn_start.on_clicked(start_click)
+
+# 2. LPF
+ax_lpf = plt.axes([start_x + (btn_width + spacing), 0.05, btn_width, btn_height])
+btn_lpf = Button(ax_lpf, 'LPF', color='#cfe2f3', hovercolor='#9fc5e8')
+btn_lpf.on_clicked(lpf_click)
+
+# 3. HPF
+ax_hpf = plt.axes([start_x + 2*(btn_width + spacing), 0.05, btn_width, btn_height])
+btn_hpf = Button(ax_hpf, 'HPF', color='#cfe2f3', hovercolor='#9fc5e8')
+btn_hpf.on_clicked(hpf_click)
+
+# 4. BPF
+ax_bpf = plt.axes([start_x + 3*(btn_width + spacing), 0.05, btn_width, btn_height])
+btn_bpf = Button(ax_bpf, 'BPF', color='#cfe2f3', hovercolor='#9fc5e8')
+btn_bpf.on_clicked(bpf_click)
+
+# 5. BSF 
+ax_bsf = plt.axes([start_x + 4*(btn_width + spacing), 0.05, btn_width, btn_height])
+btn_bsf = Button(ax_bsf, 'BSF', color='#cfe2f3', hovercolor='#9fc5e8')
+btn_bsf.on_clicked(bsf_click)
+
+# 6. PAUSE
+ax_pause = plt.axes([start_x + 5*(btn_width + spacing), 0.05, btn_width, btn_height])
+btn_pause = Button(ax_pause, 'Pause', color='#f4cccc', hovercolor='#ea9999')
+btn_pause.on_clicked(pause_click)
+
 def animate(i):
-    # Read all available data from serial buffer to keep plot real-time
     while ser.is_open and ser.in_waiting:
         try:
             serial_string = ser.readline().decode('utf-8').strip()
@@ -56,91 +100,32 @@ def animate(i):
         except (ValueError, serial.SerialException):
             pass
     
-    # Update Time Domain
     line.set_ydata(data)
     
-    # Update Frequency Domain
     if len(data) == MAX_POINTS:
         signal = np.array(data)
-        # Remove DC component for better visualization of AC signals
         signal_ac = signal - np.mean(signal)
         
         fft_vals = np.fft.fft(signal_ac)
         fft_freqs = np.fft.fftfreq(len(signal_ac), 1/FS)
         
-        # Take positive half
         pos_mask = fft_freqs >= 0
         fft_freqs = fft_freqs[pos_mask]
-        fft_mag = np.abs(fft_vals)[pos_mask] / len(signal) * 2 # Normalize
+        fft_mag = np.abs(fft_vals)[pos_mask] / len(signal) * 2 
         
         line_fft.set_data(fft_freqs, fft_mag)
         
-        # Dynamic Y-axis scaling for FFT
         if np.max(fft_mag) > 0:
              ax2.set_ylim(0, np.max(fft_mag) * 1.2)
 
     return line, line_fft
 
-# --- USER INPUT THREAD ---
-def user_input_loop():
-    time.sleep(1)
-    print("\n" + "="*30)
-    print(" STREAMING CONTROLS")
-    print(" s : START Streaming (Raw Data)")
-    print(" a : Apply Filter LPF")
-    print(" b : Apply Filter B HPF")
-    print(" c : Apply Filter C BPF")
-    print(" d : Apply Filter D BSF")
-    print(" p : PAUSE Streaming")
-    print(" q : QUIT")
-    print("="*30)
-    
-    while True:
-        try:
-            cmd = input("Command > ").strip().lower()
-            
-            if cmd == 's':
-                print(">> Mode: RAW Streaming")
-                ser.write(b's')
-            elif cmd == 'p':
-                print(">> Paused")
-                ser.write(b'p')
-            elif cmd == 'a':
-                print(">> Mode: Filter A (Shift)")
-                ser.write(b'a')
-            elif cmd == 'b':
-                print(">> Mode: Filter B (Invert)")
-                ser.write(b'b')
-            elif cmd == 'c':
-                print(">> Mode: Filter C (Scale)")
-                ser.write(b'c')
-            elif cmd == 'd':
-                print(">> Mode: Filter C (Scale)")
-                ser.write(b'd')
-            elif cmd == 'q':
-                ser.write(b'p')
-                ser.close()
-                sys.exit()
-            else:
-                print("Unknown command.")
-                
-        except (EOFError, KeyboardInterrupt):
-            ser.close()
-            sys.exit()
-
-# --- START INPUT LISTENER ---
-# daemon=True means this thread will kill itself if the main plot window closes
-input_thread = threading.Thread(target=user_input_loop, daemon=True)
-input_thread.start()
-
 # --- START ANIMATION ---
 ani = animation.FuncAnimation(fig, animate, interval=20, blit=True)
 
-print("Plotting window opening...")
-plt.show() # This blocks the main thread (keeps graph open)
+plt.show()
 
 # --- CLEANUP ---
-# This runs if you close the window manually using the X button
 if ser.is_open:
     print("Window closed. Sending stop command.")
     ser.write(b'p')
